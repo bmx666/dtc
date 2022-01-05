@@ -206,6 +206,8 @@ static void write_propval(FILE *f, struct property *prop)
 
 	if (len == 0) {
 		fprintf(f, ";");
+		if (prop->comment_deleted)
+			fprintf(f, "*/");
 		if (annotate) {
 			srcstr = srcpos_string_first(prop->srcpos, annotate);
 			if (srcstr) {
@@ -286,6 +288,8 @@ static void write_propval(FILE *f, struct property *prop)
 		}
 	}
 	fprintf(f, ";");
+	if (prop->comment_deleted)
+		fprintf(f, "*/");
 	if (annotate) {
 		srcstr = srcpos_string_first(prop->srcpos, annotate);
 		if (srcstr) {
@@ -304,6 +308,8 @@ static void write_tree_source_node(FILE *f, struct node *tree, int level)
 	char *srcstr;
 
 	write_prefix(f, level);
+	if (tree->comment_deleted)
+		fprintf(f, "/* %s */ /*", DELETED_TAG);
 	for_each_label(tree->labels, l)
 		fprintf(f, "%s: ", l->label);
 	if (tree->name && (*tree->name))
@@ -311,6 +317,8 @@ static void write_tree_source_node(FILE *f, struct node *tree, int level)
 	else
 		fprintf(f, "/ {");
 
+	if (tree->comment_deleted)
+		fprintf(f, "*/");
 	if (annotate) {
 		srcstr = srcpos_string_first(tree->srcpos, annotate);
 		if (srcstr) {
@@ -322,6 +330,8 @@ static void write_tree_source_node(FILE *f, struct node *tree, int level)
 
 	for_each_property(tree, prop) {
 		write_prefix(f, level+1);
+		if (prop->comment_deleted)
+			fprintf(f, "/* %s */ /*", DELETED_TAG);
 		for_each_label(prop->labels, l)
 			fprintf(f, "%s: ", l->label);
 		fprintf(f, "%s", prop->name);
@@ -332,7 +342,11 @@ static void write_tree_source_node(FILE *f, struct node *tree, int level)
 		write_tree_source_node(f, child, level+1);
 	}
 	write_prefix(f, level);
+	if (tree->comment_deleted)
+		fprintf(f, "/* %s */ /*", DELETED_TAG);
 	fprintf(f, "};");
+	if (tree->comment_deleted)
+		fprintf(f, "*/");
 	if (annotate) {
 		srcstr = srcpos_string_last(tree->srcpos, annotate);
 		if (srcstr) {
