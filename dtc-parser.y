@@ -241,7 +241,7 @@ devicetree:
 			struct node *target = get_node_by_ref($1, $3);
 
 			if (target)
-				delete_node(target);
+				delete_node_by_name(target->parent, target->name, &@$);
 			else
 				ERROR(&@3, "Label or path %s not found", $3);
 
@@ -293,7 +293,7 @@ propdef:
 		}
 	| DT_DEL_PROP DT_PROPNODENAME ';'
 		{
-			$$ = build_property_delete($2);
+			$$ = build_property_delete($2, &@$);
 			free($2);
 		}
 	| DT_LABEL propdef
