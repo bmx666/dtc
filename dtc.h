@@ -44,6 +44,7 @@ extern int generate_symbols;	/* generate symbols for nodes with labels */
 extern int generate_fixups;	/* generate fixups */
 extern int auto_label_aliases;	/* auto generate labels -> aliases */
 extern int annotate;		/* annotate .dts with input source location */
+extern int comment_deleted;	/* comment out deleted nodes, labels and properties */
 
 #define PHANDLE_LEGACY	0x1
 #define PHANDLE_EPAPR	0x2
@@ -198,6 +199,7 @@ bool data_is_one_string(struct data d);
 /* Live trees */
 struct label {
 	bool deleted;
+	bool comment_deleted;
 	char *label;
 	struct label *next;
 };
@@ -208,6 +210,7 @@ struct bus_type {
 
 struct property {
 	bool deleted;
+	bool comment_deleted;
 	char *name;
 	struct data val;
 
@@ -219,6 +222,7 @@ struct property {
 
 struct node {
 	bool deleted;
+	bool comment_deleted;
 	char *name;
 	struct property *proplist;
 	struct node *children;
@@ -265,7 +269,7 @@ void delete_labels(struct label **labels);
 
 struct property *build_property(const char *name, struct data val,
 				struct srcpos *srcpos);
-struct property *build_property_delete(const char *name);
+struct property *build_property_delete(const char *name, struct srcpos *srcpos);
 struct property *chain_property(struct property *first, struct property *list);
 struct property *reverse_properties(struct property *first);
 
@@ -283,7 +287,7 @@ void add_property(struct node *node, struct property *prop);
 void delete_property_by_name(struct node *node, char *name);
 void delete_property(struct property *prop);
 void add_child(struct node *parent, struct node *child);
-void delete_node_by_name(struct node *parent, char *name);
+void delete_node_by_name(struct node *parent, char *name, struct srcpos *srcpos);
 void delete_node(struct node *node);
 void append_to_property(struct node *node,
 			char *name, const void *data, int len,
@@ -367,5 +371,8 @@ void dt_to_yaml(FILE *f, struct dt_info *dti);
 /* FS trees */
 
 struct dt_info *dt_from_fs(const char *dirname);
+
+/* mark for deleted nodes, labels and properties */
+#define DELETED_TAG "__[|>*DELETED*<|]__"
 
 #endif /* DTC_H */

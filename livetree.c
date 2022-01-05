@@ -6,6 +6,8 @@
 #include "dtc.h"
 #include "srcpos.h"
 
+static struct node *build_and_name_child_node(struct node *parent, const char *name);
+
 /*
  * Tree building functions
  */
@@ -50,7 +52,8 @@ struct property *build_property(const char *name, struct data val,
 	return new;
 }
 
-struct property *build_property_delete(const char *name)
+struct property *build_property_delete(const char *name,
+				struct srcpos *srcpos)
 {
 	struct property *new = xmalloc(sizeof(*new));
 
@@ -58,6 +61,10 @@ struct property *build_property_delete(const char *name)
 
 	new->name = xstrdup(name);
 	new->deleted = 1;
+	if (comment_deleted) {
+		new->comment_deleted = 1;
+		new->srcpos = srcpos_copy(srcpos);
+	}
 
 	return new;
 }
@@ -112,6 +119,9 @@ struct node *build_node_delete(struct srcpos *srcpos)
 
 	new->deleted = 1;
 	new->srcpos = srcpos_copy(srcpos);
+	if (comment_deleted) {
+		new->comment_deleted = 1;
+	}
 
 	return new;
 }
@@ -159,7 +169,7 @@ struct node *merge_nodes(struct node *old_node, struct node *new_node)
 		new_node->proplist = new_prop->next;
 		new_prop->next = NULL;
 
-		if (new_prop->deleted) {
+		if (new_prop->deleted && !comment_deleted) {
 			delete_property_by_name(old_node, new_prop->name);
 			free(new_prop);
 			continue;
@@ -173,9 +183,15 @@ struct node *merge_nodes(struct node *old_node, struct node *new_node)
 					add_label(&old_prop->labels, l->label);
 
 				old_prop->val = new_prop->val;
-				old_prop->deleted = 0;
-				srcpos_free(old_prop->srcpos);
-				old_prop->srcpos = new_prop->srcpos;
+				if (comment_deleted) {
+					old_prop->comment_deleted = new_prop->deleted;
+					old_prop->srcpos = srcpos_extend(
+						old_prop->srcpos, new_prop->srcpos);
+				} else {
+					old_prop->deleted = 0;
+					srcpos_free(old_prop->srcpos);
+					old_prop->srcpos = new_prop->srcpos;
+				}
 				free(new_prop);
 				new_prop = NULL;
 				break;
@@ -197,7 +213,7 @@ struct node *merge_nodes(struct node *old_node, struct node *new_node)
 		new_child->next_sibling = NULL;
 
 		if (new_child->deleted) {
-			delete_node_by_name(old_node, new_child->name);
+			delete_node_by_name(old_node, new_child->name, new_child->srcpos);
 			free(new_child);
 			continue;
 		}
@@ -217,6 +233,8 @@ struct node *merge_nodes(struct node *old_node, struct node *new_node)
 	}
 
 	old_node->srcpos = srcpos_extend(old_node->srcpos, new_node->srcpos);
+	if (old_node->comment_deleted && !new_node->comment_deleted)
+		old_node->comment_deleted = 0;
 
 	/* The new node contents are now merged into the old node.  Free
 	 * the new node. */
@@ -294,6 +312,10 @@ void delete_property(struct property *prop)
 {
 	prop->deleted = 1;
 	delete_labels(&prop->labels);
+	if (comment_deleted) {
+		prop->comment_deleted = 1;
+		prop->deleted = 0;
+	}
 }
 
 void add_child(struct node *parent, struct node *child)
@@ -310,12 +332,20 @@ void add_child(struct node *parent, struct node *child)
 	*p = child;
 }
 
-void delete_node_by_name(struct node *parent, char *name)
+void delete_node_by_name(struct node *parent, char *name, struct srcpos *srcpos)
 {
 	struct node *node = parent->children;
+	struct srcpos *pos = NULL;
 
 	while (node) {
 		if (streq(node->name, name)) {
+
+			if (comment_deleted) {
+				srcpos->first_line = srcpos->last_line;
+				pos = srcpos_copy(srcpos);
+				pos = srcpos_extend(node->srcpos, pos);
+			}
+
 			delete_node(node);
 			return;
 		}
@@ -329,6 +359,10 @@ void delete_node(struct node *node)
 	struct node *child;
 
 	node->deleted = 1;
+	if (comment_deleted) {
+		node->comment_deleted = 1;
+		node->deleted = 0;
+	}
 	for_each_child(node, child)
 		delete_node(child);
 	for_each_property(node, prop)
@@ -645,8 +679,10 @@ cell_t get_node_phandle(struct node *root, struct node *node)
 
 	node->phandle = phandle;
 
-	add_phandle_property(node, "linux,phandle", PHANDLE_LEGACY);
-	add_phandle_property(node, "phandle", PHANDLE_EPAPR);
+	if (!node->comment_deleted)
+		add_phandle_property(node, "linux,phandle", PHANDLE_LEGACY);
+	if (!node->comment_deleted)
+		add_phandle_property(node, "phandle", PHANDLE_EPAPR);
 
 	/* If the node *does* have a phandle property, we must
 	 * be dealing with a self-referencing phandle, which will be
@@ -884,6 +920,10 @@ static void generate_label_tree_internal(struct dt_info *dti,
 				data_copy_escape_string(node->fullpath,
 						strlen(node->fullpath)),
 				NULL);
+
+			if (comment_deleted)
+				p->comment_deleted = l->comment_deleted;
+
 			add_property(an, p);
 		}
 
